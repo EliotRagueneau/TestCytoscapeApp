@@ -1,7 +1,6 @@
 package embl.ebi.intact.helloWorld.internal.task;
 
-import org.cytoscape.application.swing.CytoPanelComponent;
-import org.cytoscape.application.swing.CytoPanelName;
+import com.sun.org.apache.xerces.internal.xs.StringList;
 import org.cytoscape.model.*;
 import org.cytoscape.session.CyNetworkNaming;
 import org.cytoscape.util.swing.CyColorChooser;
@@ -37,6 +36,9 @@ public class HelloWorldTask extends AbstractTask {
     private final CyNetworkNaming cyNetworkNaming;
     private final VisualMappingManager vmm;
     private final VisualMappingFunctionFactory vmfFactoryC;
+    private CyTable nodeTable;
+    private CyNetwork network;
+    private CyNetworkView networkView;
 
 
     @Tunable(description = "First color range")
@@ -46,7 +48,7 @@ public class HelloWorldTask extends AbstractTask {
     public ListSingleSelection<String> lastColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
 
     @Tunable(description = "Shape of the nodes")
-    public ListSingleSelection<NodeShape> nodeShape = new ListSingleSelection<NodeShape>(ROUND_RECTANGLE, RECTANGLE, TRIANGLE, PARALLELOGRAM, ELLIPSE, HEXAGON, OCTAGON, DIAMOND);
+    public ListSingleSelection<NodeShape> nodeShape = new ListSingleSelection<>(ROUND_RECTANGLE, RECTANGLE, TRIANGLE, PARALLELOGRAM, ELLIPSE, HEXAGON, OCTAGON, DIAMOND);
 
     public HelloWorldTask(CyNetworkFactory cnf, CyNetworkViewFactory cnvf, CyNetworkViewManager networkViewManager, CyNetworkManager networkManager, CyNetworkNaming cyNetworkNaming, VisualMappingManager vmm, VisualMappingFunctionFactory vmfFactoryC) {
         this.cnf = cnf;
@@ -59,22 +61,30 @@ public class HelloWorldTask extends AbstractTask {
     }
 
     @Override
-    public void run(TaskMonitor taskMonitor) throws Exception {
+    public void run(TaskMonitor taskMonitor) {
+        setupNetwork();
 
+        setupCyNetworkView();
+
+        setupStyle();
+
+    }
+
+    private void setupNetwork(){
         // Create an empty network
-        CyNetwork myNet = this.cnf.createNetwork();
+        network = this.cnf.createNetwork();
 
         // add a node to the network
-        CyNode node1 = myNet.addNode();
-        CyNode node2 = myNet.addNode();
-        CyEdge edge = myNet.addEdge(node1, node2, true);
+        CyNode node1 = network.addNode();
+        CyNode node2 = network.addNode();
+        CyEdge edge = network.addEdge(node1, node2, true);
 
         // set name for the new node
-        CyTable nodeTable = myNet.getDefaultNodeTable();
+        nodeTable = network.getDefaultNodeTable();
         nodeTable.createListColumn("Hello", String.class, false);
         nodeTable.createColumn("World !", Double.class, false);
 
-        List<String> hellos = new ArrayList<String>();
+        List<String> hellos = new ArrayList<>();
         hellos.add("Hello");
         hellos.add("Bonjour");
 
@@ -83,41 +93,55 @@ public class HelloWorldTask extends AbstractTask {
         nodeTable.getRow(node1.getSUID()).set("World !", 1.2d);
         nodeTable.getRow(node2.getSUID()).set("name", "Node2");
         nodeTable.getRow(node2.getSUID()).set("World !", 5.6d);
-        myNet.getDefaultEdgeTable().getRow(edge.getSUID()).set("name", "Edge");
+        network.getDefaultEdgeTable().getRow(edge.getSUID()).set("name", "Edge");
 
-        myNet.getDefaultNetworkTable().getRow(myNet.getSUID())
+        network.getDefaultNetworkTable().getRow(network.getSUID())
                 .set("name", cyNetworkNaming.getSuggestedNetworkTitle("My Network"));
 
-        if (myNet == null)
-            return;
-        this.networkManager.addNetwork(myNet);
+        this.networkManager.addNetwork(network);
+    }
 
-        final Collection<CyNetworkView> views = networkViewManager.getNetworkViews(myNet);
-        CyNetworkView myView = null;
+    private void setupCyNetworkView() {
+        final Collection<CyNetworkView> views = networkViewManager.getNetworkViews(network);
+        networkView = null;
         if (views.size() != 0)
-            myView = views.iterator().next();
+            networkView = views.iterator().next();
 
-        if (myView == null) {
+        if (networkView == null) {
             // create a new view for my network
-            myView = cnvf.createNetworkView(myNet);
-            networkViewManager.addNetworkView(myView);
+            networkView = cnvf.createNetworkView(network);
+            networkViewManager.addNetworkView(networkView);
         } else {
             System.out.println("networkView already existed.");
         }
+    }
 
+    private void setupStyle() {
+        VisualStyle style = vmm.getVisualStyle(networkView);
+        style.setTitle("French Style");
 
-        for (CyNode node : myNet.getNodeList()) {
-            List names = nodeTable.getRow(node.getSUID()).get("Hello", List.class);
+        setupNodeLabels();
+        style.addVisualMappingFunction(getWorldToColorMapping());
+        style.setDefaultValue(BasicVisualLexicon.NODE_SHAPE, nodeShape.getSelectedValue());
+
+        style.apply(networkView);
+        networkView.updateView();
+    }
+
+    private void setupNodeLabels() {
+        for (CyNode node : network.getNodeList()) {
+            List names =  nodeTable.getRow(node.getSUID()).get("Hello", List.class);
             String firstHello = "";
             if (names != null && !names.isEmpty()) {
                 firstHello = (String) names.get(0);
             }
 
-            View<CyNode> nView = myView.getNodeView(node);
+            View<CyNode> nView = networkView.getNodeView(node);
             nView.setLockedValue(BasicVisualLexicon.NODE_LABEL, firstHello);
         }
+    }
 
-
+    private ContinuousMapping<Double, Paint> getWorldToColorMapping() {
         ContinuousMapping<Double, Paint> mapping = (ContinuousMapping<Double, Paint>) vmfFactoryC.createVisualMappingFunction("World !", Double.class, BasicVisualLexicon.NODE_FILL_COLOR);
 
         List<Double> worlds = nodeTable.getColumn("World !").getValues(Double.class);
@@ -126,29 +150,12 @@ public class HelloWorldTask extends AbstractTask {
         Paint minColor = getColorByName(firstColor.getSelectedValue(), Color.BLACK);
         Paint maxColor = getColorByName(lastColor.getSelectedValue(), Color.BLACK);
 
-        Paint color = CyColorChooser.showDialog(null, "Whatever", Color.CYAN);
-
         BoundaryRangeValues<Paint> brv1 = new BoundaryRangeValues<>(minColor, minColor, minColor);
         mapping.addPoint(min, brv1);
 
         BoundaryRangeValues<Paint> brv2 = new BoundaryRangeValues<>(maxColor, maxColor, maxColor);
         mapping.addPoint(max, brv2);
-
-
-        VisualStyle style = vmm.getVisualStyle(myView);
-        style.setTitle("French Style");
-        style.addVisualMappingFunction(mapping);
-        style.setDefaultValue(BasicVisualLexicon.NODE_SHAPE, nodeShape.getSelectedValue());
-        style.apply(myView);
-        myView.updateView();
-
-
-        // Set the variable destroyView to true, the following snippet of code
-        // will destroy a view
-        boolean destroyView = false;
-        if (destroyView) {
-            networkViewManager.destroyNetworkView(myView);
-        }
+        return mapping;
     }
 
     public static Color getColorByName(String name, Color ifNull) {
