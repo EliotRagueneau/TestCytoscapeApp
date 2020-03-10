@@ -28,7 +28,6 @@ public class CyActivator extends AbstractCyActivator {
 
 
     public void start(BundleContext bc) {
-
         CyNetworkNaming cnn = getService(bc, CyNetworkNaming.class);
 
         CyNetworkFactory cnf = getService(bc, CyNetworkFactory.class);
