@@ -1,47 +1,31 @@
-package embl.ebi.intact.helloWorld.internal.task;
+package embl.ebi.intact.helloWorld.internal.model;
 
 import org.cytoscape.model.*;
 import org.cytoscape.service.util.CyServiceRegistrar;
-import org.cytoscape.session.CyNetworkNaming;
-import org.cytoscape.task.hide.HideSelectedEdgesTaskFactory;
 import org.cytoscape.task.hide.HideTaskFactory;
 import org.cytoscape.task.hide.UnHideTaskFactory;
-import org.cytoscape.view.layout.CyLayoutAlgorithm;
-import org.cytoscape.view.layout.CyLayoutAlgorithmManager;
 import org.cytoscape.view.model.CyNetworkView;
 import org.cytoscape.view.model.CyNetworkViewFactory;
 import org.cytoscape.view.model.CyNetworkViewManager;
-import org.cytoscape.view.model.View;
-import org.cytoscape.view.vizmap.VisualMappingFunctionFactory;
-import org.cytoscape.view.vizmap.VisualMappingManager;
-import org.cytoscape.work.AbstractTask;
 import org.cytoscape.work.TaskManager;
-import org.cytoscape.work.TaskMonitor;
-import org.cytoscape.work.TunableSetter;
 
 import java.util.*;
-import java.util.List;
 
-public class HelloWorldTask extends AbstractTask {
+public class Network {
     private final CyServiceRegistrar registrar;
     private final CyNetwork network;
-    private  CyNetworkView networkView;
+    private CyNetworkView networkView;
     private final TaskManager taskManager;
     private CyTable edgeTable;
     private HideTaskFactory hideTaskFactory;
     private final UnHideTaskFactory unHideTaskFactory;
 
-//
-//    @Tunable(description = "First color range")
-//    public ListSingleSelection<String> firstColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-//
-//    @Tunable(description = "Last color range")
-//    public ListSingleSelection<String> lastColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-//
-//    @Tunable(description = "Shape of the nodes")
-//    public ListSingleSelection<NodeShape> nodeShape = new ListSingleSelection<NodeShape>(ROUND_RECTANGLE, RECTANGLE, TRIANGLE, PARALLELOGRAM, ELLIPSE, HEXAGON, OCTAGON, DIAMOND);
+    private List<CyEdge> collapsedEdges = new ArrayList<>();
+    private List<CyEdge> expendedEdges = new ArrayList<>();
+    private Map<ComparableUndirectedEdge, List<CyEdge>> edgesToCollapse = new HashMap<>();
 
-    public HelloWorldTask(CyServiceRegistrar registrar) {
+
+    public Network(CyServiceRegistrar registrar) {
         this.registrar = registrar;
 
         CyNetworkFactory cnf = registrar.getService(CyNetworkFactory.class);
@@ -105,15 +89,10 @@ public class HelloWorldTask extends AbstractTask {
 
         @Override
         public String toString() {
-            return  node1 + " - " + node2;
+            return node1 + " - " + node2;
         }
     }
 
-    private List<CyEdge> collapsedEdges = new ArrayList<>();
-    private List<CyEdge> expendedEdges = new ArrayList<>();
-
-
-    private Map<ComparableUndirectedEdge, List<CyEdge>> edgesToCollapse = new HashMap<>();
 
     public <T> List<T> getColumnValuesOfEdges(String columnName, Class<? extends T> columnType, List<CyEdge> edges) {
         CyTable table = network.getDefaultEdgeTable();
@@ -143,26 +122,10 @@ public class HelloWorldTask extends AbstractTask {
                     .set("summary::intact ids",
                             getColumnValuesOfEdges("intact id", String.class, edgesToCollapse.get(couple)));
         }
-        collapseEdges();
     }
 
-    private void collapseEdges() {
-        insertTasksAfterCurrentTask(hideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-//        insertTasksAfterCurrentTask(unHideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-//        taskManager.execute(hideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-//        taskManager.execute(unHideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-    }
 
-    private void expendEdges() {
-        insertTasksAfterCurrentTask(hideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-        insertTasksAfterCurrentTask(unHideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-
-//        taskManager.execute(hideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-//        taskManager.execute(unHideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-    }
-
-    @Override
-    public void run(TaskMonitor taskMonitor) {
+    public void run() {
 
         // Create an empty network
         edgeTable = network.getDefaultEdgeTable();
@@ -185,24 +148,13 @@ public class HelloWorldTask extends AbstractTask {
         setEdgesToCollapse();
         System.out.println(edgesToCollapse);
 
-//        try {
-//            Thread.sleep(5000);
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//
-        expendEdges();
-
     }
 
-    private void applyLayout() {
-        CyLayoutAlgorithm alg = registrar.getService(CyLayoutAlgorithmManager.class).getLayout("force-directed");
-        Object context = alg.createLayoutContext();
-        TunableSetter setter = registrar.getService(TunableSetter.class);
-        Map<String, Object> layoutArgs = new HashMap<>();
-        layoutArgs.put("defaultNodeMass", 10.0);
-        setter.applyTunables(context, layoutArgs);
-        Set<View<CyNode>> nodeViews = new HashSet<>(networkView.getNodeViews());
-        insertTasksAfterCurrentTask(alg.createTaskIterator(networkView, context, nodeViews, null));
+    public List<CyEdge> getCollapsedEdges() {
+        return collapsedEdges;
+    }
+
+    public List<CyEdge> getExpendedEdges() {
+        return expendedEdges;
     }
 }
