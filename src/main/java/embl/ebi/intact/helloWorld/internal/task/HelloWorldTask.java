@@ -1,6 +1,6 @@
 package embl.ebi.intact.helloWorld.internal.task;
 
-import com.sun.org.apache.xerces.internal.xs.StringList;
+import org.cytoscape.application.swing.CytoPanelName;
 import org.cytoscape.model.*;
 import org.cytoscape.session.CyNetworkNaming;
 import org.cytoscape.util.swing.CyColorChooser;
@@ -20,6 +20,7 @@ import org.cytoscape.work.TaskMonitor;
 import org.cytoscape.work.Tunable;
 import org.cytoscape.work.util.ListSingleSelection;
 
+import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,6 +30,7 @@ import java.util.List;
 import static org.cytoscape.view.presentation.property.NodeShapeVisualProperty.*;
 
 public class HelloWorldTask extends AbstractTask {
+
     private final CyNetworkFactory cnf;
     private final CyNetworkViewFactory cnvf;
     private final CyNetworkViewManager networkViewManager;
@@ -39,7 +41,6 @@ public class HelloWorldTask extends AbstractTask {
     private CyTable nodeTable;
     private CyNetwork network;
     private CyNetworkView networkView;
-
 
     @Tunable(description = "First color range")
     public ListSingleSelection<String> firstColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
@@ -63,18 +64,13 @@ public class HelloWorldTask extends AbstractTask {
     @Override
     public void run(TaskMonitor taskMonitor) {
         setupNetwork();
-
         setupCyNetworkView();
-
         setupStyle();
-
     }
 
-    private void setupNetwork(){
-        // Create an empty network
+    private void setupNetwork() {
         network = this.cnf.createNetwork();
 
-        // add a node to the network
         CyNode node1 = network.addNode();
         CyNode node2 = network.addNode();
         CyEdge edge = network.addEdge(node1, node2, true);
@@ -83,16 +79,26 @@ public class HelloWorldTask extends AbstractTask {
         nodeTable = network.getDefaultNodeTable();
         nodeTable.createListColumn("Hello", String.class, false);
         nodeTable.createColumn("World !", Double.class, false);
+        nodeTable.createColumn("Style::Color", Color.class, false);
 
-        List<String> hellos = new ArrayList<>();
-        hellos.add("Hello");
-        hellos.add("Bonjour");
+        List<String> hellos = new ArrayList<String>() {{
+            add("Hello");
+            add("Bonjour");
+        }};
 
-        nodeTable.getRow(node1.getSUID()).set("name", "Node1");
-        nodeTable.getRow(node1.getSUID()).set("Hello", hellos);
-        nodeTable.getRow(node1.getSUID()).set("World !", 1.2d);
-        nodeTable.getRow(node2.getSUID()).set("name", "Node2");
-        nodeTable.getRow(node2.getSUID()).set("World !", 5.6d);
+
+        CyRow node1Row = nodeTable.getRow(node1.getSUID());
+
+        node1Row.set("name", "Node1");
+        node1Row.set("Hello", hellos);
+        node1Row.set("World !", 1.2d);
+        node1Row.set("Style::Color", Color.BLUE);
+
+        CyRow node2Row = nodeTable.getRow(node2.getSUID());
+
+        node2Row.set("name", "Node2");
+        node2Row.set("World !", 5.6d);
+
         network.getDefaultEdgeTable().getRow(edge.getSUID()).set("name", "Edge");
 
         network.getDefaultNetworkTable().getRow(network.getSUID())
@@ -130,7 +136,7 @@ public class HelloWorldTask extends AbstractTask {
 
     private void setupNodeLabels() {
         for (CyNode node : network.getNodeList()) {
-            List names =  nodeTable.getRow(node.getSUID()).get("Hello", List.class);
+            List<?> names = nodeTable.getRow(node.getSUID()).get("Hello", List.class);
             String firstHello = "";
             if (names != null && !names.isEmpty()) {
                 firstHello = (String) names.get(0);
@@ -147,6 +153,7 @@ public class HelloWorldTask extends AbstractTask {
         List<Double> worlds = nodeTable.getColumn("World !").getValues(Double.class);
         double min = Collections.min(worlds);
         double max = Collections.max(worlds);
+
         Paint minColor = getColorByName(firstColor.getSelectedValue(), Color.BLACK);
         Paint maxColor = getColorByName(lastColor.getSelectedValue(), Color.BLACK);
 
