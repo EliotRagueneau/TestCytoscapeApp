@@ -1,208 +1,179 @@
 package embl.ebi.intact.helloWorld.internal.task;
 
-import org.cytoscape.model.*;
+import embl.ebi.intact.helloWorld.internal.model.Functions;
 import org.cytoscape.service.util.CyServiceRegistrar;
-import org.cytoscape.session.CyNetworkNaming;
-import org.cytoscape.task.hide.HideSelectedEdgesTaskFactory;
-import org.cytoscape.task.hide.HideTaskFactory;
-import org.cytoscape.task.hide.UnHideTaskFactory;
-import org.cytoscape.view.layout.CyLayoutAlgorithm;
-import org.cytoscape.view.layout.CyLayoutAlgorithmManager;
-import org.cytoscape.view.model.CyNetworkView;
-import org.cytoscape.view.model.CyNetworkViewFactory;
-import org.cytoscape.view.model.CyNetworkViewManager;
-import org.cytoscape.view.model.View;
-import org.cytoscape.view.vizmap.VisualMappingFunctionFactory;
-import org.cytoscape.view.vizmap.VisualMappingManager;
 import org.cytoscape.work.AbstractTask;
-import org.cytoscape.work.TaskManager;
 import org.cytoscape.work.TaskMonitor;
-import org.cytoscape.work.TunableSetter;
+import org.neo4j.driver.v1.AuthTokens;
+import org.neo4j.driver.v1.Driver;
+import org.neo4j.driver.v1.GraphDatabase;
+import org.neo4j.driver.v1.StatementResult;
 
+import java.io.File;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
-import java.util.List;
+
 
 public class HelloWorldTask extends AbstractTask {
     private final CyServiceRegistrar registrar;
-    private final CyNetwork network;
-    private  CyNetworkView networkView;
-    private final TaskManager taskManager;
-    private CyTable edgeTable;
-    private HideTaskFactory hideTaskFactory;
-    private final UnHideTaskFactory unHideTaskFactory;
-
-//
-//    @Tunable(description = "First color range")
-//    public ListSingleSelection<String> firstColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-//
-//    @Tunable(description = "Last color range")
-//    public ListSingleSelection<String> lastColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-//
-//    @Tunable(description = "Shape of the nodes")
-//    public ListSingleSelection<NodeShape> nodeShape = new ListSingleSelection<NodeShape>(ROUND_RECTANGLE, RECTANGLE, TRIANGLE, PARALLELOGRAM, ELLIPSE, HEXAGON, OCTAGON, DIAMOND);
 
     public HelloWorldTask(CyServiceRegistrar registrar) {
         this.registrar = registrar;
 
-        CyNetworkFactory cnf = registrar.getService(CyNetworkFactory.class);
-        CyNetworkViewFactory cnvf = registrar.getService(CyNetworkViewFactory.class);
-        CyNetworkViewManager networkViewManager = registrar.getService(CyNetworkViewManager.class);
-        CyNetworkManager networkManager = registrar.getService(CyNetworkManager.class);
-        taskManager = registrar.getService(TaskManager.class);
+    }
 
-        network = cnf.createNetwork();
-        networkManager.addNetwork(network);
-
-        final Collection<CyNetworkView> views = networkViewManager.getNetworkViews(network);
-        networkView = null;
-        if (views.size() != 0)
-            networkView = views.iterator().next();
-
-        if (networkView == null) {
-            // create a new view for my network
-            networkView = cnvf.createNetworkView(network);
-            networkViewManager.addNetworkView(networkView);
+    public static File createFile(String path) {
+        ClassLoader cl = HelloWorldTask.class.getClassLoader();
+        URL url = cl.getResource(path);
+        if (url != null) {
+            try {
+                return new File(url.toURI());
+            } catch (URISyntaxException e) {
+                e.printStackTrace();
+                System.err.println("Couldn't convert to URI : " + url);
+            }
         } else {
-            System.out.println("networkView already existed.");
+            System.err.println("Couldn't find file: " + path);
         }
-
-        edgeTable = network.getDefaultEdgeTable();
-
-        hideTaskFactory = registrar.getService(HideTaskFactory.class);
-        unHideTaskFactory = registrar.getService(UnHideTaskFactory.class);
+        return null;
     }
 
-    private static class ComparableUndirectedEdge {
-        CyNode node1;
-        CyNode node2;
-
-        public List<ComparableUndirectedEdge> fromEdgeList(List<CyEdge> edges) {
-            List<ComparableUndirectedEdge> comparableUndirectedEdges = new ArrayList<>();
-            for (CyEdge edge : edges) {
-                comparableUndirectedEdges.add(new ComparableUndirectedEdge(edge));
-            }
-            return comparableUndirectedEdges;
-        }
-
-        ComparableUndirectedEdge(CyEdge edge) {
-            this.node1 = edge.getSource();
-            this.node2 = edge.getTarget();
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof ComparableUndirectedEdge)) return false;
-            ComparableUndirectedEdge that = (ComparableUndirectedEdge) o;
-            return (Objects.equals(node1, that.node1) && Objects.equals(node2, that.node2)) ||
-                    (Objects.equals(node1, that.node2) && Objects.equals(node2, that.node1));
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(node1) + Objects.hash(node2);
-        }
-
-        @Override
-        public String toString() {
-            return  node1 + " - " + node2;
-        }
-    }
-
-    private List<CyEdge> collapsedEdges = new ArrayList<>();
-    private List<CyEdge> expendedEdges = new ArrayList<>();
-
-
-    private Map<ComparableUndirectedEdge, List<CyEdge>> edgesToCollapse = new HashMap<>();
-
-    public <T> List<T> getColumnValuesOfEdges(String columnName, Class<? extends T> columnType, List<CyEdge> edges) {
-        CyTable table = network.getDefaultEdgeTable();
-        List<T> columnValues = new ArrayList<>();
-        for (CyEdge edge : edges) {
-            columnValues.add(table.getRow(edge.getSUID()).get(columnName, columnType, null));
-        }
-        return columnValues;
-    }
-
-    public void setEdgesToCollapse() {
-        for (CyEdge edge : expendedEdges) {
-            ComparableUndirectedEdge comparableUndirectedEdge = new ComparableUndirectedEdge(edge);
-            if (edgesToCollapse.containsKey(comparableUndirectedEdge)) {
-                edgesToCollapse.get(comparableUndirectedEdge).add(edge);
-            } else {
-                List<CyEdge> similarEdges = new ArrayList<>();
-                similarEdges.add(edge);
-                edgesToCollapse.put(comparableUndirectedEdge, similarEdges);
-            }
-        }
-
-        for (ComparableUndirectedEdge couple : edgesToCollapse.keySet()) {
-            CyEdge summaryEdge = network.addEdge(couple.node1, couple.node2, false);
-            collapsedEdges.add(summaryEdge);
-            edgeTable.getRow(summaryEdge.getSUID())
-                    .set("summary::intact ids",
-                            getColumnValuesOfEdges("intact id", String.class, edgesToCollapse.get(couple)));
-        }
-        collapseEdges();
-    }
-
-    private void collapseEdges() {
-        insertTasksAfterCurrentTask(hideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-//        insertTasksAfterCurrentTask(unHideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-//        taskManager.execute(hideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-//        taskManager.execute(unHideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-    }
-
-    private void expendEdges() {
-        insertTasksAfterCurrentTask(hideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-        insertTasksAfterCurrentTask(unHideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-
-//        taskManager.execute(hideTaskFactory.createTaskIterator(networkView, null, collapsedEdges));
-//        taskManager.execute(unHideTaskFactory.createTaskIterator(networkView, null, expendedEdges));
-    }
 
     @Override
     public void run(TaskMonitor taskMonitor) {
+        List<Functions> toExecute = new ArrayList<>();
+        int numberOfExecutions = 20;
+        for (Functions fun : Functions.values()) {
+            toExecute.addAll(Collections.nCopies(numberOfExecutions, fun));
+        }
+        Collections.shuffle(toExecute);
 
-        // Create an empty network
-        edgeTable = network.getDefaultEdgeTable();
-        edgeTable.createColumn("intact id", String.class, false);
-        edgeTable.createListColumn("summary::intact ids", String.class, false);
+        Map<Functions, List<Duration>> durations = new HashMap<>();
+        for (Functions fun : toExecute) {
+            System.out.println(fun);
+            Duration duration = fun.execute();
+            if (durations.containsKey(fun)) {
+                durations.get(fun).add(duration);
+            } else {
+                durations.put(fun, new ArrayList<Duration>() {{
+                    add(duration);
+                }});
+            }
+        }
 
-
-        // add a node to the network
-        CyNode node1 = network.addNode();
-        CyNode node2 = network.addNode();
-        CyEdge edge1 = network.addEdge(node1, node2, false);
-        CyEdge edge2 = network.addEdge(node1, node2, false);
-        CyEdge edge3 = network.addEdge(node2, node1, false);
-        edgeTable.getRow(edge1.getSUID()).set("intact id", "A");
-        edgeTable.getRow(edge2.getSUID()).set("intact id", "B");
-        edgeTable.getRow(edge3.getSUID()).set("intact id", "C");
-        expendedEdges.addAll(Arrays.asList(edge1, edge2, edge3));
-        networkView.updateView();
-
-        setEdgesToCollapse();
-        System.out.println(edgesToCollapse);
-
-//        try {
-//            Thread.sleep(5000);
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//
-        expendEdges();
+        System.out.println("durationInMs, format, output, dataset");
+        for (Map.Entry<Functions, List<Duration>> entry : durations.entrySet()) {
+            for (Duration duration : entry.getValue()) {
+                String csvDetails = "";
+                switch (entry.getKey()) {
+                    case JSON_FILE:
+                        csvDetails = ", json, file";
+                        break;
+                    case JSON_STREAM:
+                        csvDetails = ", json, stream";
+                        break;
+                    case CSV_FILE:
+                        csvDetails = ", csv, file";
+                        break;
+                    case CSV_STREAM:
+                        csvDetails = ", csv, stream";
+                        break;
+                }
+                System.out.println(duration.toMillis() + csvDetails + ", whole");
+            }
+        }
 
     }
 
-    private void applyLayout() {
-        CyLayoutAlgorithm alg = registrar.getService(CyLayoutAlgorithmManager.class).getLayout("force-directed");
-        Object context = alg.createLayoutContext();
-        TunableSetter setter = registrar.getService(TunableSetter.class);
-        Map<String, Object> layoutArgs = new HashMap<>();
-        layoutArgs.put("defaultNodeMass", 10.0);
-        setter.applyTunables(context, layoutArgs);
-        Set<View<CyNode>> nodeViews = new HashSet<>(networkView.getNodeViews());
-        insertTasksAfterCurrentTask(alg.createTaskIterator(networkView, context, nodeViews, null));
+    public static String query = "CALL apoc.export.{format}.query(\n" +
+            "\"MATCH (interactorA:GraphInteractor)<-[:interactors]-(interaction:GraphBinaryInteractionEvidence)-[:interactors]->(interactorB:GraphInteractor)\n" +
+            "WHERE  ID(interactorA)<ID(interactorB) AND EXISTS(interactorA.uniprotName) AND EXISTS(interactorB.uniprotName)\n" +
+            "OPTIONAL MATCH (interaction)-[identifiersR:identifiers]-(identifiersN:GraphXref)-[sourceR:database]-(sourceN:GraphCvTerm) WHERE sourceN.shortName IN ['reactome','signor','intact']\n" +
+            "OPTIONAL MATCH (interaction)-[interactiontypeR:interactionType]-(interactiontypeN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (interaction)-[experimentR:experiment]-(experimentN:GraphExperiment)-[interactionDetectionMethodR:interactionDetectionMethod]-(interactionDetectionMethodN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (experimentN)-[hostOrganismR:hostOrganism]-(hostOrganismN:GraphOrganism)\n" +
+            "OPTIONAL MATCH (experimentN)-[participantIdentificationMethodR:participantIdentificationMethod]-(participantIdentificationMethodN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (experimentN)-[publicationR:PUB_EXP]-(publicationN:GraphPublication)-[pubmedIdXrefR:pubmedId]-(pubmedIdXrefN:GraphXref)\n" +
+            "OPTIONAL MATCH (interaction)-[clusteredInteractionR:interactions]-(clusteredInteractionN:GraphClusteredInteraction)\n" +
+            "OPTIONAL MATCH (interaction)-[complexExpansionR:complexExpansion]-(complexExpansionN:GraphCvTerm)\n" +
+            "RETURN\n" +
+            "       distinct\n" +
+            "       interactorA.uniprotName as interactorA_uniprot_name,\n" +
+            "       interactorB.uniprotName as interactorB_uniprot_name,\n" +
+            "       interactiontypeN.shortName as interaction_type_short_name,\n" +
+            "       interactiontypeN.mIIdentifier as interaction_type_mi_identifier,\n" +
+            "       interactionDetectionMethodN.shortName as interaction_detection_method_short_name,\n" +
+            "       interactionDetectionMethodN.mIIdentifier as interaction_detection_method_mi_identifier,\n" +
+            "       hostOrganismN.scientificName as host_organism_scientific_name,\n" +
+            "       hostOrganismN.taxId as host_organism_tax_id,\n" +
+            "       participantIdentificationMethodN.shortName as participant_detection_method_short_name,\n" +
+            "       participantIdentificationMethodN.mIIdentifier as participant_detection_method_mi_identifier,\n" +
+            "       clusteredInteractionN.miscore as mi_score,\n" +
+            "       pubmedIdXrefN.identifier as pubmed_id,\n" +
+            "       COLLECT(identifiersN.identifier) as interaction_identifier,\n" +
+            "       CASE WHEN complexExpansionN.shortName IS NULL THEN 'Not Needed' ELSE complexExpansionN.shortName END as expansion_method_short_name,\n" +
+            "       CASE WHEN complexExpansionN.mIIdentifier IS NULL THEN 'Not Needed' ELSE complexExpansionN.mIIdentifier END as expansion_method_mi_identifier,\n" +
+            "       COLLECT (sourceN.shortName) as source_databases\n" +
+            "       ORDER BY interactorA_uniprot_name\n" +
+            "\",\n" +
+            "{file},{stream:true}\n" +
+            ")\n" +
+            "YIELD file, nodes, relationships, properties, data\n" +
+            "RETURN file, nodes, relationships, properties, data";
+
+    public static Duration queryServer(String exportMethod, boolean withStream) {
+        Instant begin = Instant.now();
+
+        try {
+            Driver driver = GraphDatabase.driver("bolt://localhost:7687", AuthTokens.basic("neo4j", "1234"));
+            String currentQuery = query.replace("{format}", exportMethod);
+            if (withStream)
+                currentQuery = currentQuery.replace("{file}", "null");
+            else
+                currentQuery = currentQuery.replace("{file}", "\"test." + exportMethod + "\"").replace("{stream:true}", "{}");
+            StatementResult result = driver.session().run(currentQuery);
+            System.out.println(result.consume());
+            driver.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Result records displayed :");
+        return displayTimeElapsed(begin, Instant.now());
+
     }
+
+    public static Duration displayTimeElapsed(Instant before, Instant after) {
+        Duration duration = Duration.between(before, after);
+        long seconds = duration.getSeconds();
+        long absSeconds = Math.abs(seconds);
+        String positive = String.format(
+                "%d:%02d:%02d",
+                absSeconds / 3600,
+                (absSeconds % 3600) / 60,
+                absSeconds % 60);
+        System.out.println(seconds < 0 ? "-" + positive : positive);
+        return duration;
+    }
+
+
+    public static Duration queryLocalNeo4jServerWithJsonStreamed() {
+        return queryServer("json", true);
+    }
+
+    public static Duration queryLocalNeo4jServerWithCSVStreamed() {
+        return queryServer("csv", true);
+    }
+
+    public static Duration queryLocalNeo4jServerWithCSVFile() {
+        return queryServer("csv", false);
+    }
+
+    public static Duration queryLocalNeo4jServerWithJsonFile() {
+        return queryServer("json", false);
+    }
+
 }
