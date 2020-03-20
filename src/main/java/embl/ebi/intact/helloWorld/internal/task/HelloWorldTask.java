@@ -1,176 +1,179 @@
 package embl.ebi.intact.helloWorld.internal.task;
 
-import org.cytoscape.application.swing.CytoPanelName;
-import org.cytoscape.model.*;
-import org.cytoscape.session.CyNetworkNaming;
-import org.cytoscape.util.swing.CyColorChooser;
-import org.cytoscape.view.model.CyNetworkView;
-import org.cytoscape.view.model.CyNetworkViewFactory;
-import org.cytoscape.view.model.CyNetworkViewManager;
-import org.cytoscape.view.model.View;
-import org.cytoscape.view.presentation.property.BasicVisualLexicon;
-import org.cytoscape.view.presentation.property.values.NodeShape;
-import org.cytoscape.view.vizmap.VisualMappingFunctionFactory;
-import org.cytoscape.view.vizmap.VisualMappingManager;
-import org.cytoscape.view.vizmap.VisualStyle;
-import org.cytoscape.view.vizmap.mappings.BoundaryRangeValues;
-import org.cytoscape.view.vizmap.mappings.ContinuousMapping;
+import embl.ebi.intact.helloWorld.internal.model.Functions;
+import org.cytoscape.service.util.CyServiceRegistrar;
 import org.cytoscape.work.AbstractTask;
 import org.cytoscape.work.TaskMonitor;
-import org.cytoscape.work.Tunable;
-import org.cytoscape.work.util.ListSingleSelection;
+import org.neo4j.driver.v1.AuthTokens;
+import org.neo4j.driver.v1.Driver;
+import org.neo4j.driver.v1.GraphDatabase;
+import org.neo4j.driver.v1.StatementResult;
 
-import javax.swing.*;
-import java.awt.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.io.File;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
-import static org.cytoscape.view.presentation.property.NodeShapeVisualProperty.*;
 
 public class HelloWorldTask extends AbstractTask {
+    private final CyServiceRegistrar registrar;
 
-    private final CyNetworkFactory cnf;
-    private final CyNetworkViewFactory cnvf;
-    private final CyNetworkViewManager networkViewManager;
-    private final CyNetworkManager networkManager;
-    private final CyNetworkNaming cyNetworkNaming;
-    private final VisualMappingManager vmm;
-    private final VisualMappingFunctionFactory vmfFactoryC;
-    private CyTable nodeTable;
-    private CyNetwork network;
-    private CyNetworkView networkView;
+    public HelloWorldTask(CyServiceRegistrar registrar) {
+        this.registrar = registrar;
 
-    @Tunable(description = "First color range")
-    public ListSingleSelection<String> firstColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-
-    @Tunable(description = "Last color range")
-    public ListSingleSelection<String> lastColor = new ListSingleSelection<>("Red", "Green", "Blue", "Black");
-
-    @Tunable(description = "Shape of the nodes")
-    public ListSingleSelection<NodeShape> nodeShape = new ListSingleSelection<>(ROUND_RECTANGLE, RECTANGLE, TRIANGLE, PARALLELOGRAM, ELLIPSE, HEXAGON, OCTAGON, DIAMOND);
-
-    public HelloWorldTask(CyNetworkFactory cnf, CyNetworkViewFactory cnvf, CyNetworkViewManager networkViewManager, CyNetworkManager networkManager, CyNetworkNaming cyNetworkNaming, VisualMappingManager vmm, VisualMappingFunctionFactory vmfFactoryC) {
-        this.cnf = cnf;
-        this.cnvf = cnvf;
-        this.networkViewManager = networkViewManager;
-        this.networkManager = networkManager;
-        this.cyNetworkNaming = cyNetworkNaming;
-        this.vmm = vmm;
-        this.vmfFactoryC = vmfFactoryC;
     }
+
+    public static File createFile(String path) {
+        ClassLoader cl = HelloWorldTask.class.getClassLoader();
+        URL url = cl.getResource(path);
+        if (url != null) {
+            try {
+                return new File(url.toURI());
+            } catch (URISyntaxException e) {
+                e.printStackTrace();
+                System.err.println("Couldn't convert to URI : " + url);
+            }
+        } else {
+            System.err.println("Couldn't find file: " + path);
+        }
+        return null;
+    }
+
 
     @Override
     public void run(TaskMonitor taskMonitor) {
-        setupNetwork();
-        setupCyNetworkView();
-        setupStyle();
-    }
-
-    private void setupNetwork() {
-        network = this.cnf.createNetwork();
-
-        CyNode node1 = network.addNode();
-        CyNode node2 = network.addNode();
-        CyEdge edge = network.addEdge(node1, node2, true);
-
-        // set name for the new node
-        nodeTable = network.getDefaultNodeTable();
-        nodeTable.createListColumn("Hello", String.class, false);
-        nodeTable.createColumn("World !", Double.class, false);
-        nodeTable.createColumn("Style::Color", Color.class, false);
-
-        List<String> hellos = new ArrayList<String>() {{
-            add("Hello");
-            add("Bonjour");
-        }};
-
-
-        CyRow node1Row = nodeTable.getRow(node1.getSUID());
-
-        node1Row.set("name", "Node1");
-        node1Row.set("Hello", hellos);
-        node1Row.set("World !", 1.2d);
-        node1Row.set("Style::Color", Color.BLUE);
-
-        CyRow node2Row = nodeTable.getRow(node2.getSUID());
-
-        node2Row.set("name", "Node2");
-        node2Row.set("World !", 5.6d);
-
-        network.getDefaultEdgeTable().getRow(edge.getSUID()).set("name", "Edge");
-
-        network.getDefaultNetworkTable().getRow(network.getSUID())
-                .set("name", cyNetworkNaming.getSuggestedNetworkTitle("My Network"));
-
-        this.networkManager.addNetwork(network);
-    }
-
-    private void setupCyNetworkView() {
-        final Collection<CyNetworkView> views = networkViewManager.getNetworkViews(network);
-        networkView = null;
-        if (views.size() != 0)
-            networkView = views.iterator().next();
-
-        if (networkView == null) {
-            // create a new view for my network
-            networkView = cnvf.createNetworkView(network);
-            networkViewManager.addNetworkView(networkView);
-        } else {
-            System.out.println("networkView already existed.");
+        List<Functions> toExecute = new ArrayList<>();
+        int numberOfExecutions = 20;
+        for (Functions fun : Functions.values()) {
+            toExecute.addAll(Collections.nCopies(numberOfExecutions, fun));
         }
-    }
+        Collections.shuffle(toExecute);
 
-    private void setupStyle() {
-        VisualStyle style = vmm.getVisualStyle(networkView);
-        style.setTitle("French Style");
-
-        setupNodeLabels();
-        style.addVisualMappingFunction(getWorldToColorMapping());
-        style.setDefaultValue(BasicVisualLexicon.NODE_SHAPE, nodeShape.getSelectedValue());
-
-        style.apply(networkView);
-        networkView.updateView();
-    }
-
-    private void setupNodeLabels() {
-        for (CyNode node : network.getNodeList()) {
-            List<?> names = nodeTable.getRow(node.getSUID()).get("Hello", List.class);
-            String firstHello = "";
-            if (names != null && !names.isEmpty()) {
-                firstHello = (String) names.get(0);
+        Map<Functions, List<Duration>> durations = new HashMap<>();
+        for (Functions fun : toExecute) {
+            System.out.println(fun);
+            Duration duration = fun.execute();
+            if (durations.containsKey(fun)) {
+                durations.get(fun).add(duration);
+            } else {
+                durations.put(fun, new ArrayList<Duration>() {{
+                    add(duration);
+                }});
             }
-
-            View<CyNode> nView = networkView.getNodeView(node);
-            nView.setLockedValue(BasicVisualLexicon.NODE_LABEL, firstHello);
         }
+
+        System.out.println("durationInMs, format, output, dataset");
+        for (Map.Entry<Functions, List<Duration>> entry : durations.entrySet()) {
+            for (Duration duration : entry.getValue()) {
+                String csvDetails = "";
+                switch (entry.getKey()) {
+                    case JSON_FILE:
+                        csvDetails = ", json, file";
+                        break;
+                    case JSON_STREAM:
+                        csvDetails = ", json, stream";
+                        break;
+                    case CSV_FILE:
+                        csvDetails = ", csv, file";
+                        break;
+                    case CSV_STREAM:
+                        csvDetails = ", csv, stream";
+                        break;
+                }
+                System.out.println(duration.toMillis() + csvDetails + ", whole");
+            }
+        }
+
     }
 
-    private ContinuousMapping<Double, Paint> getWorldToColorMapping() {
-        ContinuousMapping<Double, Paint> mapping = (ContinuousMapping<Double, Paint>) vmfFactoryC.createVisualMappingFunction("World !", Double.class, BasicVisualLexicon.NODE_FILL_COLOR);
+    public static String query = "CALL apoc.export.{format}.query(\n" +
+            "\"MATCH (interactorA:GraphInteractor)<-[:interactors]-(interaction:GraphBinaryInteractionEvidence)-[:interactors]->(interactorB:GraphInteractor)\n" +
+            "WHERE  ID(interactorA)<ID(interactorB) AND EXISTS(interactorA.uniprotName) AND EXISTS(interactorB.uniprotName)\n" +
+            "OPTIONAL MATCH (interaction)-[identifiersR:identifiers]-(identifiersN:GraphXref)-[sourceR:database]-(sourceN:GraphCvTerm) WHERE sourceN.shortName IN ['reactome','signor','intact']\n" +
+            "OPTIONAL MATCH (interaction)-[interactiontypeR:interactionType]-(interactiontypeN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (interaction)-[experimentR:experiment]-(experimentN:GraphExperiment)-[interactionDetectionMethodR:interactionDetectionMethod]-(interactionDetectionMethodN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (experimentN)-[hostOrganismR:hostOrganism]-(hostOrganismN:GraphOrganism)\n" +
+            "OPTIONAL MATCH (experimentN)-[participantIdentificationMethodR:participantIdentificationMethod]-(participantIdentificationMethodN:GraphCvTerm)\n" +
+            "OPTIONAL MATCH (experimentN)-[publicationR:PUB_EXP]-(publicationN:GraphPublication)-[pubmedIdXrefR:pubmedId]-(pubmedIdXrefN:GraphXref)\n" +
+            "OPTIONAL MATCH (interaction)-[clusteredInteractionR:interactions]-(clusteredInteractionN:GraphClusteredInteraction)\n" +
+            "OPTIONAL MATCH (interaction)-[complexExpansionR:complexExpansion]-(complexExpansionN:GraphCvTerm)\n" +
+            "RETURN\n" +
+            "       distinct\n" +
+            "       interactorA.uniprotName as interactorA_uniprot_name,\n" +
+            "       interactorB.uniprotName as interactorB_uniprot_name,\n" +
+            "       interactiontypeN.shortName as interaction_type_short_name,\n" +
+            "       interactiontypeN.mIIdentifier as interaction_type_mi_identifier,\n" +
+            "       interactionDetectionMethodN.shortName as interaction_detection_method_short_name,\n" +
+            "       interactionDetectionMethodN.mIIdentifier as interaction_detection_method_mi_identifier,\n" +
+            "       hostOrganismN.scientificName as host_organism_scientific_name,\n" +
+            "       hostOrganismN.taxId as host_organism_tax_id,\n" +
+            "       participantIdentificationMethodN.shortName as participant_detection_method_short_name,\n" +
+            "       participantIdentificationMethodN.mIIdentifier as participant_detection_method_mi_identifier,\n" +
+            "       clusteredInteractionN.miscore as mi_score,\n" +
+            "       pubmedIdXrefN.identifier as pubmed_id,\n" +
+            "       COLLECT(identifiersN.identifier) as interaction_identifier,\n" +
+            "       CASE WHEN complexExpansionN.shortName IS NULL THEN 'Not Needed' ELSE complexExpansionN.shortName END as expansion_method_short_name,\n" +
+            "       CASE WHEN complexExpansionN.mIIdentifier IS NULL THEN 'Not Needed' ELSE complexExpansionN.mIIdentifier END as expansion_method_mi_identifier,\n" +
+            "       COLLECT (sourceN.shortName) as source_databases\n" +
+            "       ORDER BY interactorA_uniprot_name\n" +
+            "\",\n" +
+            "{file},{stream:true}\n" +
+            ")\n" +
+            "YIELD file, nodes, relationships, properties, data\n" +
+            "RETURN file, nodes, relationships, properties, data";
 
-        List<Double> worlds = nodeTable.getColumn("World !").getValues(Double.class);
-        double min = Collections.min(worlds);
-        double max = Collections.max(worlds);
+    public static Duration queryServer(String exportMethod, boolean withStream) {
+        Instant begin = Instant.now();
 
-        Paint minColor = getColorByName(firstColor.getSelectedValue(), Color.BLACK);
-        Paint maxColor = getColorByName(lastColor.getSelectedValue(), Color.BLACK);
-
-        BoundaryRangeValues<Paint> brv1 = new BoundaryRangeValues<>(minColor, minColor, minColor);
-        mapping.addPoint(min, brv1);
-
-        BoundaryRangeValues<Paint> brv2 = new BoundaryRangeValues<>(maxColor, maxColor, maxColor);
-        mapping.addPoint(max, brv2);
-        return mapping;
-    }
-
-    public static Color getColorByName(String name, Color ifNull) {
         try {
-            return (Color) Color.class.getField(name.toUpperCase()).get(null);
-        } catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException e) {
+            Driver driver = GraphDatabase.driver("bolt://localhost:7687", AuthTokens.basic("neo4j", "1234"));
+            String currentQuery = query.replace("{format}", exportMethod);
+            if (withStream)
+                currentQuery = currentQuery.replace("{file}", "null");
+            else
+                currentQuery = currentQuery.replace("{file}", "\"test." + exportMethod + "\"").replace("{stream:true}", "{}");
+            StatementResult result = driver.session().run(currentQuery);
+            System.out.println(result.consume());
+            driver.close();
+        } catch (Exception e) {
             e.printStackTrace();
-            return ifNull;
         }
+
+        System.out.println("Result records displayed :");
+        return displayTimeElapsed(begin, Instant.now());
+
     }
+
+    public static Duration displayTimeElapsed(Instant before, Instant after) {
+        Duration duration = Duration.between(before, after);
+        long seconds = duration.getSeconds();
+        long absSeconds = Math.abs(seconds);
+        String positive = String.format(
+                "%d:%02d:%02d",
+                absSeconds / 3600,
+                (absSeconds % 3600) / 60,
+                absSeconds % 60);
+        System.out.println(seconds < 0 ? "-" + positive : positive);
+        return duration;
+    }
+
+
+    public static Duration queryLocalNeo4jServerWithJsonStreamed() {
+        return queryServer("json", true);
+    }
+
+    public static Duration queryLocalNeo4jServerWithCSVStreamed() {
+        return queryServer("csv", true);
+    }
+
+    public static Duration queryLocalNeo4jServerWithCSVFile() {
+        return queryServer("csv", false);
+    }
+
+    public static Duration queryLocalNeo4jServerWithJsonFile() {
+        return queryServer("json", false);
+    }
+
 }
