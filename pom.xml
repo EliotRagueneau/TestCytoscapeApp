@@ -1,6 +1,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
+
 
     <properties>
         <cytoscape.api.version>3.7.2</cytoscape.api.version>
@@ -18,6 +20,14 @@
     <version>1.0</version>
 
     <packaging>bundle</packaging>
+
+<!--    <modules>-->
+<!--        <module>OSGI-dependancy</module>-->
+<!--    </modules>-->
+
+
+
+
     <build>
         <plugins>
             <plugin>
@@ -32,7 +42,7 @@
             <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
-                <version>${maven-bundle-plugin.version}</version>
+                <version>4.1.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
@@ -40,11 +50,22 @@
                         <Bundle-Version>${project.version}</Bundle-Version>
                         <Private-Package>${bundle.namespace}.*</Private-Package>
                         <Bundle-Activator>${bundle.namespace}.CyActivator</Bundle-Activator>
+                        <Embed-Dependency>
+                            neo4j-java-driver;scope=compile|runtime
+                        </Embed-Dependency>
+                        <Embed-Transitive>true</Embed-Transitive>
                     </instructions>
+                    <archive>
+                        <manifestEntries>
+                            <Cytoscape-App-Name>Hello Wold App</Cytoscape-App-Name>
+                        </manifestEntries>
+                    </archive>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
+
     <repositories>
         <repository>
             <id>cytoscape_snapshots</id>
@@ -69,6 +90,7 @@
             <url>http://code.cytoscape.org/nexus/content/repositories/releases/</url>
         </repository>
     </repositories>
+
 
     <dependencies>
         <dependency>
@@ -121,12 +143,17 @@
             <artifactId>swing-util-api</artifactId>
             <version>${cytoscape.api.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.osgi</groupId>
             <artifactId>org.osgi.core</artifactId>
             <version>${osgi.api.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
+            <version>1.4.0</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 </project>
